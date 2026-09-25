@@ -52,7 +52,6 @@
         }
         .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 20px -8px rgba(0,0,0,0.15); }
         .btn-primary:hover { background: #0f172a; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* STATS */
         .stats-grid {
@@ -129,21 +128,42 @@
         }
         .btn-icon:hover { background: #f1f5f9; color: #1e293b; }
 
-        /* ROOMS */
-        .rooms-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-        .room-item {
-            background: #f9fbfd; border-radius: 18px;
-            padding: 14px; display: flex;
-            align-items: center; justify-content: space-between;
-            border: 1px solid #e9f0f5;
+        /* ROOMS — grid auto-fits 30 rooms nicely */
+        .rooms-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            max-height: 520px;
+            overflow-y: auto;
+            padding-right: 4px;
         }
+        .room-item {
+            background: #f9fbfd; border-radius: 16px;
+            padding: 10px 12px;
+            display: flex; flex-direction: column;
+            gap: 6px;
+            border: 1px solid #e9f0f5;
+            transition: 0.15s;
+        }
+        .room-item:hover { transform: translateY(-2px); box-shadow: 0 6px 14px -6px rgba(0,0,0,0.08); }
         .room-item.vacant { border-left: 5px solid #22c55e; background: #f0fdf4; }
         .room-item.occupied { border-left: 5px solid #f97316; background: #fff7ed; }
-        .room-number { font-weight: 700; font-size: 16px; color: #0f172a; }
+        .room-number {
+            font-weight: 700; font-size: 14px; color: #0f172a;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .room-number i { font-size: 11px; color: #94a3b8; }
+        .room-guest {
+            font-size: 11px; color: #64748b;
+            white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis;
+            min-height: 14px;
+        }
         .room-status {
-            font-size: 12px; font-weight: 600;
-            padding: 4px 10px; border-radius: 30px;
+            font-size: 11px; font-weight: 600;
+            padding: 3px 8px; border-radius: 20px;
             background: white;
+            text-align: center;
         }
         .vacant .room-status { color: #15803d; }
         .occupied .room-status { color: #b45309; }
@@ -213,7 +233,7 @@
             body { padding: 16px; }
             .header-left h1 { font-size: 22px; }
             .stat-value { font-size: 28px; }
-            .rooms-grid { grid-template-columns: 1fr; }
+            .rooms-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
         }
     </style>
 </head>
@@ -276,7 +296,7 @@
                             <input type="text" id="guestNameInput" placeholder="e.g. Chanda M.">
                         </div>
                         <div class="form-group">
-                            <label>Room</label>
+                            <label>Room number</label>
                             <select id="roomSelect"></select>
                         </div>
                     </div>
@@ -298,7 +318,7 @@
         <div class="right-section">
             <div class="card">
                 <div class="card-header">
-                    <h2><i class="fas fa-door-open"></i> Rooms</h2>
+                    <h2><i class="fas fa-door-open"></i> Rooms (1–30)</h2>
                     <span class="small-badge" id="roomSummaryBadge">0 vacant</span>
                 </div>
                 <div class="rooms-grid" id="roomsGrid"></div>
@@ -335,8 +355,8 @@
 <!-- ============================================================= -->
 <script>
     // 🔴 REPLACE THESE TWO LINES WITH YOUR ACTUAL SUPABASE VALUES
-    const SUPABASE_URL = 'https://owuwprvlneqzacgzvihc.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93dXdwcnZsbmVxemFjZ3p2aWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzMjI5NzQsImV4cCI6MjEwNTg5ODk3NH0.bJy52MzAayNfB7X6_BQRmGObiPdTpFZvPbrHZUND8Xc';
+    const SUPABASE_URL = 'https://YOUR-PROJECT-REF.supabase.co';
+    const SUPABASE_ANON_KEY = 'YOUR-ANON-PUBLIC-KEY';
 </script>
 
 <!-- Supabase client from CDN -->
@@ -353,7 +373,7 @@
 
     function initSupabase() {
         if (SUPABASE_URL.includes('YOUR-PROJECT') || SUPABASE_ANON_KEY.includes('YOUR-ANON')) {
-            showToast('⚠️ Please add your Supabase URL and key in the script section', 'error', 8000);
+            showToast('⚠️ Add your Supabase URL and key first', 'error', 8000);
             showConfigHelp();
             return false;
         }
@@ -391,7 +411,7 @@
         return div.innerHTML;
     }
 
-    // ---------- LOAD DATA ----------
+    // ---------- LOAD ----------
     async function loadAll() {
         if (!supabase && !initSupabase()) return;
         setLoading(true);
@@ -501,14 +521,20 @@
 
     function renderRooms() {
         const grid = document.getElementById('roomsGrid');
+        if (!rooms.length) {
+            grid.innerHTML = '<div class="text-muted" style="grid-column:1/-1;text-align:center;padding:20px;">No rooms in database.</div>';
+            return;
+        }
         grid.innerHTML = rooms.map(room => {
             const occ = room.is_occupied;
             const occupant = occ ? guests.find(g => g.room_id === room.id && g.still_lodging) : null;
-            const extra = occupant ? `<span style="font-size:11px;color:#64748b;margin-left:6px;">${escapeHtml(occupant.name.split(' ')[0])}</span>` : '';
+            const guestName = occupant ? escapeHtml(occupant.name.split(' ')[0]) : '—';
             return `<div class="room-item ${occ ? 'occupied' : 'vacant'}">
                 <div class="room-number">
-                    <i class="fas fa-door-${occ ? 'open' : 'closed'}"></i> ${escapeHtml(room.name)} ${extra}
+                    <span>${escapeHtml(room.name)}</span>
+                    <i class="fas fa-door-${occ ? 'open' : 'closed'}"></i>
                 </div>
+                <div class="room-guest">${guestName}</div>
                 <div class="room-status">${occ ? 'Occupied' : 'Vacant'}</div>
             </div>`;
         }).join('');
@@ -520,15 +546,19 @@
     function renderRoomSelect() {
         const select = document.getElementById('roomSelect');
         const vacant = rooms.filter(r => !r.is_occupied);
+
         if (!vacant.length) {
             select.innerHTML = '<option value="">-- No vacant rooms --</option>';
             select.disabled = true;
-        } else {
-            select.disabled = false;
-            select.innerHTML = vacant.map(r =>
-                `<option value="${r.id}">${escapeHtml(r.name)} (cap ${r.capacity})</option>`
-            ).join('');
+            return;
         }
+        select.disabled = false;
+
+        // Group by numeric order (Room 1 → Room 30)
+        select.innerHTML = vacant
+            .sort((a, b) => a.id - b.id)
+            .map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`)
+            .join('');
     }
 
     function updateBadges() {
@@ -553,7 +583,6 @@
 
         setLoading(true);
         try {
-            // Insert guest
             const { error: guestErr } = await supabase.from('guests').insert({
                 name,
                 room_id: Number(roomId),
@@ -563,14 +592,12 @@
             });
             if (guestErr) throw guestErr;
 
-            // Mark room occupied
             const { error: roomErr } = await supabase
                 .from('rooms')
                 .update({ is_occupied: true })
                 .eq('id', Number(roomId));
             if (roomErr) throw roomErr;
 
-            // Clear form
             document.getElementById('guestNameInput').value = '';
             document.getElementById('amountPaidInput').value = '500';
 
@@ -651,30 +678,53 @@
         alert(
             'ChiEdgars Lodge · Setup\n\n' +
             '1. Create a project at supabase.com\n' +
-            '2. Run the SQL schema (see README)\n' +
+            '2. Run the SQL schema below in SQL Editor\n' +
             '3. Copy your Project URL and anon key\n' +
-            '4. In this file, find the <script> block near the bottom\n' +
-            '   that says "REPLACE THESE TWO LINES" and paste them in.\n\n' +
-            '5. Push to GitHub, deploy on Vercel — done!'
+            '4. In index.html, find the script block with\n' +
+            '   SUPABASE_URL and SUPABASE_ANON_KEY and paste them.\n\n' +
+            '5. Push to GitHub → deploy on Vercel.\n\n' +
+            '=== SQL SCHEMA ===\n\n' +
+            "create table rooms (\n" +
+            "  id bigint generated always as identity primary key,\n" +
+            "  name text not null,\n" +
+            "  capacity int default 2,\n" +
+            "  is_occupied boolean default false\n" +
+            ");\n\n" +
+            "create table guests (\n" +
+            "  id bigint generated always as identity primary key,\n" +
+            "  name text not null,\n" +
+            "  room_id bigint references rooms(id),\n" +
+            "  check_in date not null,\n" +
+            "  check_out date,\n" +
+            "  amount_paid numeric default 0,\n" +
+            "  still_lodging boolean default true,\n" +
+            "  created_at timestamptz default now()\n" +
+            ");\n\n" +
+            "insert into rooms (name, capacity)\n" +
+            "select 'Room ' || i, 2\n" +
+            "from generate_series(1, 30) as i;\n\n" +
+            'alter table rooms enable row level security;\n' +
+            'alter table guests enable row level security;\n\n' +
+            'create policy "public read rooms" on rooms for select using (true);\n' +
+            'create policy "public read guests" on guests for select using (true);\n' +
+            'create policy "public insert guests" on guests for insert with check (true);\n' +
+            'create policy "public update guests" on guests for update using (true);\n' +
+            'create policy "public update rooms" on rooms for update using (true);'
         );
     };
 
     // ---------- BOOT ----------
     document.addEventListener('DOMContentLoaded', () => {
-        // Set date
         const opts = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
         document.getElementById('currentDate').textContent =
             new Date().toLocaleDateString('en-GB', opts);
 
-        // Default check-in date
         document.getElementById('checkInDate').value = today();
 
-        // Init
         if (initSupabase()) {
             loadAll();
         }
 
-        // Attach button
         document.getElementById('addGuestBtn').addEventListener('click', addGuest);
     });
 })();
